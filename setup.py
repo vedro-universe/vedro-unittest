@@ -14,7 +14,7 @@ def find_dev_required():
 setup(
     name="vedro-unittest",
     version="0.0.1",
-    description="",
+    description="Allows running unittest test cases within the Vedro framework",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
     author="Nikita Tsvetkov",
@@ -27,7 +27,7 @@ setup(
     },
     license="Apache-2.0",
     packages=find_packages(exclude=["tests", "tests.*"]),
-    package_data={"vedro_git_changed": ["py.typed"]},
+    package_data={"vedro_unittest": ["py.typed"]},
     install_requires=find_required(),
     tests_require=find_dev_required(),
     classifiers=[

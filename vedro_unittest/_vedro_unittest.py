@@ -17,4 +17,4 @@ class VedroUnitTestPlugin(Plugin):
 
 class VedroUnitTest(PluginConfig):
     plugin = VedroUnitTestPlugin
-    description = ""
+    description = "Allows running unittest test cases within the Vedro framework"
