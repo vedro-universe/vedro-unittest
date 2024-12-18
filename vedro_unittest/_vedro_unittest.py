@@ -1,7 +1,15 @@
+import os
+import unittest
 from typing import Type, Union
 
 from vedro.core import Dispatcher, Plugin, PluginConfig, VirtualScenario
-from vedro.events import ConfigLoadedEvent, ScenarioFailedEvent, ScenarioPassedEvent
+from vedro.events import (
+    ConfigLoadedEvent,
+    ExceptionRaisedEvent,
+    ScenarioFailedEvent,
+    ScenarioPassedEvent,
+)
+from vedro.plugins.director.rich.utils import TracebackFilter
 
 from ._test_case_loader import TestCaseLoader
 
@@ -11,11 +19,14 @@ __all__ = ("VedroUnitTest", "VedroUnitTestPlugin",)
 class VedroUnitTestPlugin(Plugin):
     def __init__(self, config: Type["VedroUnitTest"]) -> None:
         super().__init__(config)
+        self._show_internal_calls: bool = config.show_internal_calls
+        self._tb_filter: Union[TracebackFilter, None] = None
 
     def subscribe(self, dispatcher: Dispatcher) -> None:
         dispatcher.listen(ConfigLoadedEvent, self.on_config_loaded) \
                   .listen(ScenarioPassedEvent, self.on_scenario_passed) \
-                  .listen(ScenarioFailedEvent, self.on_scenario_failed)
+                  .listen(ScenarioFailedEvent, self.on_scenario_failed) \
+                  .listen(ExceptionRaisedEvent, self.on_exception_raised)
 
     def on_config_loaded(self, event: ConfigLoadedEvent) -> None:
         event.config.Registry.ScenarioLoader.register(  # pragma: no branch
@@ -41,6 +52,15 @@ class VedroUnitTestPlugin(Plugin):
                 "Scenario failed because it was expected to fail, but the scenario passed"
             )
 
+    def on_exception_raised(self, event: ExceptionRaisedEvent) -> None:
+        if self._show_internal_calls:
+            return
+
+        if self._tb_filter is None:
+            self._tb_filter = TracebackFilter(modules=[unittest, os.path.dirname(__file__)])
+
+        event.exc_info.traceback = self._tb_filter.filter_tb(event.exc_info.traceback)
+
     def _get_expected_failure(self, scenario: VirtualScenario) -> Union[BaseException, None]:
         return getattr(scenario._orig_scenario, "__vedro_unittest_expected_failure__", None)
 
@@ -51,3 +71,6 @@ class VedroUnitTestPlugin(Plugin):
 class VedroUnitTest(PluginConfig):
     plugin = VedroUnitTestPlugin
     description = "Allows running unittest test cases within the Vedro framework"
+
+    # Show internal calls (unittest and vedro_unittest) in the traceback output
+    show_internal_calls = False
