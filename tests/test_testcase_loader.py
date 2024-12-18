@@ -216,14 +216,17 @@ async def test_run_expected_failure_failed(*, loader: TestCaseLoader, tmp_scn_di
 
 async def test_set_up(*, loader: TestCaseLoader, tmp_scn_dir: Path, dispatcher: Dispatcher):
     with given:
+        tmp_file = tmp_scn_dir / "tmp_file.txt"
+
         path = tmp_scn_dir / "scenario.py"
-        path.write_text(dedent('''
+        path.write_text(dedent(f'''
             import unittest
             class TestCase(unittest.TestCase):
                 def setUp(self):
-                    self.val = 0
+                    self.val = "setUp"
                 def test_smth(self):
-                    self.assertEqual(self.val + 1, 1)
+                    with open("{tmp_file}", "w") as f:
+                        f.write(self.val)
         '''))
 
         test_cases = await loader.load(path)
@@ -233,6 +236,9 @@ async def test_set_up(*, loader: TestCaseLoader, tmp_scn_dir: Path, dispatcher: 
 
     with then:
         assert report.total == report.passed == 1
+
+        assert tmp_file.exists()
+        assert tmp_file.read_text() == "setUp"
 
 
 async def test_tear_down(*, loader: TestCaseLoader, tmp_scn_dir: Path, dispatcher: Dispatcher):
@@ -244,9 +250,38 @@ async def test_tear_down(*, loader: TestCaseLoader, tmp_scn_dir: Path, dispatche
             import unittest
             class TestCase(unittest.TestCase):
                 def test_smth(self):
-                    self.val = "tearDown"
+                    self.val = "test_smth"
+                def tearDown(self):
+                    with open("{tmp_file}", "w") as f:
+                        f.write(self.val)
+        '''))
+        test_cases = await loader.load(path)
+
+    with when:
+        report = await run_test_cases(test_cases, dispatcher, project_dir=tmp_scn_dir.parent)
+
+    with then:
+        assert report.total == report.passed == 1
+
+        assert tmp_file.exists()
+        assert tmp_file.read_text() == "test_smth"
+
+
+async def test_cleanup(*, loader: TestCaseLoader, tmp_scn_dir: Path, dispatcher: Dispatcher):
+    with given:
+        tmp_file = tmp_scn_dir / "tmp_file.txt"
+
+        path = tmp_scn_dir / "scenario.py"
+        path.write_text(dedent(f'''
+            import unittest
+            class TestCase(unittest.TestCase):
+                def setUp(self):
+                    self.addCleanup(self._cleanup_action)
+                def test_smth(self):
                     self.assertTrue(True)
                 def tearDown(self):
+                    self.val = "tearDown"
+                def _cleanup_action(self):
                     with open("{tmp_file}", "w") as f:
                         f.write(self.val)
         '''))
