@@ -296,3 +296,45 @@ async def test_cleanup(*, loader: TestCaseLoader, tmp_scn_dir: Path, dispatcher:
 
         assert tmp_file.exists()
         assert tmp_file.read_text() == "tearDown"
+
+
+async def test_subtest_all_pass(*, loader: TestCaseLoader, tmp_scn_dir: Path,
+                                dispatcher: Dispatcher):
+    with given:
+        path = tmp_scn_dir / "scenario.py"
+        path.write_text(dedent('''
+            import unittest
+            class TestCase(unittest.TestCase):
+                def test_subtests(self):
+                    for i in range(3):
+                        with self.subTest(i=i):
+                            self.assertTrue(i < 3)  # i is 0, 1, 2 - always True
+        '''))
+        test_cases = await loader.load(path)
+
+    with when:
+        report = await run_test_cases(test_cases, dispatcher, project_dir=tmp_scn_dir.parent)
+
+    with then:
+        assert report.total == report.passed == 1
+
+
+async def test_subtest_one_fails(*, loader: TestCaseLoader, tmp_scn_dir: Path,
+                                 dispatcher: Dispatcher):
+    with given:
+        path = tmp_scn_dir / "scenario.py"
+        path.write_text(dedent('''
+            import unittest
+            class TestCase(unittest.TestCase):
+                def test_subtests(self):
+                    for i in range(3):
+                        with self.subTest(i=i):
+                            self.assertTrue(i < 2)  # fails when i=2
+        '''))
+        test_cases = await loader.load(path)
+
+    with when:
+        report = await run_test_cases(test_cases, dispatcher, project_dir=tmp_scn_dir.parent)
+
+    with then:
+        assert report.total == report.failed == 1
