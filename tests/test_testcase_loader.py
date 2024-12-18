@@ -30,6 +30,7 @@ async def test_load_scenario(*, loader: TestCaseLoader, tmp_scn_dir: Path):
         assert len(test_cases) == 1
         assert issubclass(test_cases[0], Scenario)
         assert test_cases[0].__name__ == "Scenario__TestCase__test_smth"
+        assert test_cases[0].subject == "TestCase.test_smth"
 
 
 async def test_run_passed_test(*, loader: TestCaseLoader, tmp_scn_dir: Path,

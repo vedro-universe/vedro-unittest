@@ -38,16 +38,25 @@ class TestCaseLoader(ScenarioLoader):
 
         return loaded
 
+    def _extract_tests_from_suite(self, test_suite: unittest.TestSuite) -> List[unittest.TestCase]:
+        tests = []
+        for test in test_suite:
+            if isinstance(test, unittest.TestSuite):
+                tests.extend(self._extract_tests_from_suite(test))
+            elif isinstance(test, unittest.TestCase):
+                tests.append(test)
+            else:
+                raise TypeError(f"Unsupported test type: {type(test)}")
+        return tests
+
     def _create_vedro_scenarios(self, test_case: Type[unittest.TestCase],
                                 module: ModuleType) -> List[Type[Scenario]]:
         test_loader = unittest.TestLoader()
         test_suite = test_loader.loadTestsFromTestCase(test_case)
+        tests = self._extract_tests_from_suite(test_suite)
 
         scenarios = []
-        for test in test_suite:
-            if isinstance(test, unittest.TestSuite):
-                raise ValueError("TestSuite is not supported")
-
+        for test in tests:
             skip_reason = self._get_test_skip_reason(test) if self._is_test_skipped(test) else None
             is_failure_expected = self._is_test_expected_to_fail(test)
 
@@ -62,7 +71,7 @@ class TestCaseLoader(ScenarioLoader):
         class_name = test.__class__.__name__
         method_name = test._testMethodName
 
-        scenario_subject = f"{method_name}"
+        scenario_subject = f"{class_name}.{method_name}"
         scenario_name = f"Scenario__{class_name}__{method_name}"
 
         def do(self: Scenario) -> None:
