@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import List, Type
+from typing import List, Optional, Type
 
 import pytest
 from vedro import Scenario
@@ -11,7 +11,8 @@ from vedro.core.scenario_scheduler import MonotonicScenarioScheduler as Scenario
 
 from vedro_unittest import TestCaseLoader, VedroUnitTest, VedroUnitTestPlugin
 
-__all__ = ("dispatcher", "vedro_unittest", "tmp_scn_dir", "loader", "run_test_cases",)
+__all__ = ("dispatcher", "vedro_unittest", "tmp_scn_dir", "loader", "run_test_cases",
+           "make_vscenario",)
 
 
 @pytest.fixture
@@ -60,3 +61,18 @@ async def run_test_cases(test_cases: List[Type[Scenario]], dispatcher: Dispatche
     runner = ScenarioRunner(dispatcher)
     report = await runner.run(scheduler)
     return report
+
+
+def make_vscenario(*, project_dir: Path,
+                   unexpected_success: bool = False,
+                   expected_failure: Optional[BaseException] = None) -> VirtualScenario:
+    class _Scenario(Scenario):
+        pass
+
+    if unexpected_success:
+        setattr(_Scenario, "__vedro_unittest_unexpected_success__", unexpected_success)
+
+    if expected_failure:
+        setattr(_Scenario, "__vedro_unittest_expected_failure__", expected_failure)
+
+    return create_vscenario(_Scenario, project_dir=project_dir)

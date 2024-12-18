@@ -2,28 +2,20 @@ import os
 import unittest
 from inspect import isclass
 from pathlib import Path
-from types import ModuleType, TracebackType
-from typing import List, Tuple, Type, Union, cast
+from types import ModuleType
+from typing import List, Type, TypeVar, Union, cast
 
+from niltype import Nil
 from vedro import Scenario, skip
 from vedro.core import ModuleLoader, ScenarioLoader
 
 __all__ = ("TestCaseLoader",)
 
-ErrType = Tuple[Type[BaseException], BaseException, TracebackType]
-ErrNoneType = Tuple[None, None, None]
+T = TypeVar("T")
 
 
-class TestResult(unittest.TestResult):
-    def _exc_info_to_string(self, err: Union[ErrType, ErrNoneType],
-                            test: unittest.TestCase) -> str:
-        if not hasattr(self, "_exceptions"):
-            self._exceptions = []
-
-        if err and err[0] is not None:
-            self._exceptions.append(err)
-
-        return super()._exc_info_to_string(err, test)  # type: ignore
+class UnexpectedSuccessError(AssertionError):
+    pass
 
 
 class TestCaseLoader(ScenarioLoader):
@@ -40,7 +32,7 @@ class TestCaseLoader(ScenarioLoader):
 
         for name in module.__dict__:
             val = getattr(module, name)
-            if isclass(val) and issubclass(val, unittest.TestCase):
+            if isclass(val) and issubclass(val, unittest.TestCase) and val != unittest.TestCase:
                 scenarios = self._create_vedro_scenarios(val, module)
                 loaded.extend(scenarios)
 
@@ -56,21 +48,17 @@ class TestCaseLoader(ScenarioLoader):
             if isinstance(test, unittest.TestSuite):
                 raise ValueError("TestSuite is not supported")
 
-            skip_reason: Union[str, None] = None
-            if self._has_module_setup(module) or self._has_module_teardown(module):
-                skip_reason = "Skipped because module has setUpModule or tearDownModule function"
-            elif self._has_class_setup(test_case) or self._has_class_teardown(test_case):
-                skip_reason = "Skipped because class has setUpClass or tearDownClass function"
-            elif self._is_test_skipped(test):
-                skip_reason = self._get_test_skip_reason(test)
+            skip_reason = self._get_test_skip_reason(test) if self._is_test_skipped(test) else None
+            is_failure_expected = self._is_test_expected_to_fail(test)
 
-            scenario = self._create_vedro_scenario(test, skip_reason)
+            scenario = self._create_vedro_scenario(test, skip_reason, is_failure_expected)
             scenario.__file__ = os.path.abspath(module.__file__)  # type: ignore
             scenarios.append(scenario)
         return scenarios
 
     def _create_vedro_scenario(self, test: unittest.TestCase,
-                               skip_reason: Union[str, None] = None) -> Type[Scenario]:
+                               skip_reason: Union[str, None] = None,
+                               is_failure_expected: bool = False) -> Type[Scenario]:
         class_name = test.__class__.__name__
         method_name = test._testMethodName
 
@@ -78,12 +66,17 @@ class TestCaseLoader(ScenarioLoader):
         scenario_name = f"Scenario__{class_name}__{method_name}"
 
         def do(self: Scenario) -> None:
-            test_result = TestResult()
-            test.run(test_result)  # also runs setUp and tearDown
-
-            exceptions = getattr(test_result, "_exceptions", [])
-            for exc_type, exc_val, exc_tb in exceptions:
-                raise exc_type(exc_val).with_traceback(exc_tb)
+            try:
+                test.debug()
+            except BaseException as e:
+                if is_failure_expected:
+                    setattr(scenario, "__vedro_unittest_expected_failure__", e)
+                else:
+                    raise
+            else:
+                if is_failure_expected:
+                    setattr(scenario, "__vedro_unittest_unexpected_success__", True)
+                    raise UnexpectedSuccessError("Scenario passed, but expected to fail")
 
         scenario = type(scenario_name, (Scenario,), {
             "subject": scenario_subject,
@@ -95,25 +88,20 @@ class TestCaseLoader(ScenarioLoader):
         return cast(Type[Scenario], scenario)
 
     def _is_test_skipped(self, test: unittest.TestCase) -> bool:
-        return getattr(getattr(test, test._testMethodName), "__unittest_skip__", False)
+        return self._get_test_attr(test, "__unittest_skip__", False)
 
     def _get_test_skip_reason(self, test: unittest.TestCase) -> str:
-        return getattr(getattr(test, test._testMethodName), "__unittest_skip_why__", "")
+        return self._get_test_attr(test, "__unittest_skip_why__", "")
 
-    def _has_module_setup(self, module: ModuleType) -> bool:
-        return hasattr(module, "setUpModule")
+    def _is_test_expected_to_fail(self, test: unittest.TestCase) -> bool:
+        return self._get_test_attr(test, "__unittest_expecting_failure__", False)
 
-    def _has_module_teardown(self, module: ModuleType) -> bool:
-        return hasattr(module, "tearDownModule")
-
-    def _has_class_setup(self, test: Type[unittest.TestCase]) -> bool:
-        return self._has_own_method(test, "setUpClass")
-
-    def _has_class_teardown(self, test: Type[unittest.TestCase]) -> bool:
-        return self._has_own_method(test, "tearDownClass")
-
-    def _has_own_method(self, test: Type[unittest.TestCase], method_name: str) -> bool:
-        for base in test.__mro__:
-            if (base != unittest.TestCase) and (method_name in base.__dict__):
-                return True
-        return False
+    def _get_test_attr(self, test: unittest.TestCase, name: str, default: T) -> T:
+        test_method_value = getattr(getattr(test, test._testMethodName), name, Nil)
+        test_value = getattr(test, name, Nil)
+        if test_method_value is not Nil:
+            return cast(T, test_method_value)
+        elif test_value is not Nil:
+            return cast(T, test_value)
+        else:
+            return default
