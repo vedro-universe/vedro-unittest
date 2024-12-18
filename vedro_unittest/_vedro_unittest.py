@@ -57,7 +57,8 @@ class VedroUnitTestPlugin(Plugin):
             return
 
         if self._tb_filter is None:
-            self._tb_filter = TracebackFilter(modules=[unittest, os.path.dirname(__file__)])
+            vedro_unittest_module = os.path.dirname(__file__)
+            self._tb_filter = TracebackFilter(modules=[unittest, vedro_unittest_module])
 
         event.exc_info.traceback = self._tb_filter.filter_tb(event.exc_info.traceback)
 
