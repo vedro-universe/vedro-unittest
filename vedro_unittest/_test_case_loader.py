@@ -1,5 +1,6 @@
 import os
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from inspect import isclass
 from pathlib import Path
 from types import ModuleType
@@ -76,7 +77,16 @@ class TestCaseLoader(ScenarioLoader):
 
         def do(self: Scenario) -> None:
             try:
-                test.debug()
+                if isinstance(test, unittest.IsolatedAsyncioTestCase):
+                    with ThreadPoolExecutor() as executor:
+                        def debug() -> None:
+                            try:
+                                test.debug()
+                            finally:
+                                test._tearDownAsyncioRunner()  # type: ignore
+                        executor.submit(debug).result()
+                else:
+                    test.debug()
             except BaseException as e:
                 if is_failure_expected:
                     setattr(scenario, "__vedro_unittest_expected_failure__", e)
