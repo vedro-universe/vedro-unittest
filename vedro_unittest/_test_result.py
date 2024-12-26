@@ -1,13 +1,13 @@
 import unittest
 from types import TracebackType
-from typing import List, Tuple, Union
+from typing import List, Tuple, Type, Union
 from unittest import TestCase
 
 __all__ = ("TestResult",)
 
 
-ExcInfo = Tuple[type[BaseException], BaseException, TracebackType]
-OptExcInfo = ExcInfo | Tuple[None, None, None]
+ExcInfo = Tuple[Type[BaseException], BaseException, TracebackType]
+OptExcInfo = Union[ExcInfo, Tuple[None, None, None]]
 
 
 TestCaseExceptionList = List[Tuple[TestCase, BaseException]]
