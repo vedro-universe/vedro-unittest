@@ -4,19 +4,15 @@ from concurrent.futures import ThreadPoolExecutor
 from inspect import isclass
 from pathlib import Path
 from types import ModuleType
-from typing import List, Type, TypeVar, Union, cast
+from typing import Any, List, Type, cast
 
 from niltype import Nil
 from vedro import Scenario, skip
 from vedro.core import ModuleLoader, ScenarioLoader
 
+from ._test_result import TestResult
+
 __all__ = ("TestCaseLoader",)
-
-T = TypeVar("T")
-
-
-class UnexpectedSuccessError(AssertionError):
-    pass
 
 
 class TestCaseLoader(ScenarioLoader):
@@ -30,13 +26,10 @@ class TestCaseLoader(ScenarioLoader):
 
     def _collect_scenarios(self, module: ModuleType) -> List[Type[Scenario]]:
         loaded = []
-
-        for name in module.__dict__:
-            val = getattr(module, name)
+        for name, val in module.__dict__.items():
             if isclass(val) and issubclass(val, unittest.TestCase) and val != unittest.TestCase:
                 scenarios = self._create_vedro_scenarios(val, module)
                 loaded.extend(scenarios)
-
         return loaded
 
     def _extract_tests_from_suite(self, test_suite: unittest.TestSuite) -> List[unittest.TestCase]:
@@ -58,69 +51,72 @@ class TestCaseLoader(ScenarioLoader):
 
         scenarios = []
         for test in tests:
-            skip_reason = self._get_test_skip_reason(test) if self._is_test_skipped(test) else None
-            is_failure_expected = self._is_test_expected_to_fail(test)
-
-            scenario = self._create_vedro_scenario(test, skip_reason, is_failure_expected)
+            scenario = self._create_vedro_scenario(test)
             scenario.__file__ = os.path.abspath(module.__file__)  # type: ignore
             scenarios.append(scenario)
         return scenarios
 
-    def _create_vedro_scenario(self, test: unittest.TestCase,
-                               skip_reason: Union[str, None] = None,
-                               is_failure_expected: bool = False) -> Type[Scenario]:
-        class_name = test.__class__.__name__
-        method_name = test._testMethodName
+    def _create_vedro_scenario(self, test: unittest.TestCase) -> Type[Scenario]:
+        def do(scn: Scenario) -> None:
+            test_result = self._run_test(test)
+            self._process_test_result(scn, test_result)
 
-        scenario_subject = f"{class_name}.{method_name}"
-        scenario_name = f"Scenario__{class_name}__{method_name}"
-
-        def do(self: Scenario) -> None:
-            try:
-                if isinstance(test, unittest.IsolatedAsyncioTestCase):
-                    with ThreadPoolExecutor() as executor:
-                        def debug() -> None:
-                            try:
-                                test.debug()
-                            finally:
-                                test._tearDownAsyncioRunner()  # type: ignore
-                        executor.submit(debug).result()
-                else:
-                    test.debug()
-            except BaseException as e:
-                if is_failure_expected:
-                    setattr(scenario, "__vedro_unittest_expected_failure__", e)
-                else:
-                    raise
-            else:
-                if is_failure_expected:
-                    setattr(scenario, "__vedro_unittest_unexpected_success__", True)
-                    raise UnexpectedSuccessError("Scenario passed, but expected to fail")
-
-        scenario = type(scenario_name, (Scenario,), {
-            "subject": scenario_subject,
+        scenario = type(self._create_scenario_name(test), (Scenario,), {
+            "subject": self._create_scenario_subject(test),
             "do": do,
         })
 
-        if skip_reason is not None:
+        if self._is_test_skipped(test):
+            skip_reason = self._get_test_skip_reason(test)
             return skip(skip_reason)(scenario)
         return cast(Type[Scenario], scenario)
 
+    def _create_scenario_subject(self, test: unittest.TestCase) -> str:
+        class_name = test.__class__.__name__
+        method_name = test._testMethodName
+        return f"[{class_name}] {method_name.replace('_', ' ')}"
+
+    def _create_scenario_name(self, test: unittest.TestCase) -> str:
+        class_name = test.__class__.__name__
+        method_name = test._testMethodName
+        return f"Scenario__{class_name}__{method_name}"
+
+    def _run_test(self, test: unittest.TestCase) -> TestResult:
+        test_result = TestResult()
+        if isinstance(test, unittest.IsolatedAsyncioTestCase):
+            with ThreadPoolExecutor() as executor:
+                executor.submit(test.run, test_result).result()
+        else:
+            test.run(test_result)
+        return test_result
+
+    def _process_test_result(self, scenario: Scenario, test_result: TestResult) -> None:
+        if test_result.vedro_unittest_exceptions:
+            _, exception = test_result.vedro_unittest_exceptions[0]
+            raise exception
+
+        if test_result.vedro_unittest_expected_failures:
+            _, expected_failure = test_result.vedro_unittest_expected_failures[0]
+            setattr(scenario, "__vedro_unittest_expected_failure__", expected_failure)
+
+        if test_result.vedro_unittest_unexpected_successes:
+            exc_type = type("UnexpectedSuccessError", (AssertionError,), {})
+            exc_value = exc_type("Scenario passed, but expected to fail")
+            setattr(scenario, "__vedro_unittest_unexpected_success__", exc_value)
+            raise exc_value
+
     def _is_test_skipped(self, test: unittest.TestCase) -> bool:
-        return self._get_test_attr(test, "__unittest_skip__", False)
+        return cast(bool, self._get_test_attr(test, "__unittest_skip__", False))
 
     def _get_test_skip_reason(self, test: unittest.TestCase) -> str:
-        return self._get_test_attr(test, "__unittest_skip_why__", "")
+        return cast(str, self._get_test_attr(test, "__unittest_skip_why__", ""))
 
-    def _is_test_expected_to_fail(self, test: unittest.TestCase) -> bool:
-        return self._get_test_attr(test, "__unittest_expecting_failure__", False)
-
-    def _get_test_attr(self, test: unittest.TestCase, name: str, default: T) -> T:
+    def _get_test_attr(self, test: unittest.TestCase, name: str, default: Any) -> Any:
         test_method_value = getattr(getattr(test, test._testMethodName), name, Nil)
         test_value = getattr(test, name, Nil)
         if test_method_value is not Nil:
-            return cast(T, test_method_value)
+            return test_method_value
         elif test_value is not Nil:
-            return cast(T, test_value)
+            return test_value
         else:
             return default
