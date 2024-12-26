@@ -308,7 +308,7 @@ async def test_subtest_all_pass(*, loader: TestCaseLoader, tmp_scn_dir: Path,
                 def test_subtests(self):
                     for i in range(3):
                         with self.subTest(i=i):
-                            self.assertTrue(i < 3)  # i is 0, 1, 2 - always True
+                            self.assertTrue(i >= 0)
         '''))
         test_cases = await loader.load(path)
 
@@ -329,7 +329,7 @@ async def test_subtest_one_fails(*, loader: TestCaseLoader, tmp_scn_dir: Path,
                 def test_subtests(self):
                     for i in range(3):
                         with self.subTest(i=i):
-                            self.assertTrue(i < 2)  # fails when i=2
+                            self.assertTrue(i != 2)
         '''))
         test_cases = await loader.load(path)
 

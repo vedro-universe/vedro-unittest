@@ -65,7 +65,7 @@ class VedroUnitTestPlugin(Plugin):
     def _get_expected_failure(self, scenario: VirtualScenario) -> Union[BaseException, None]:
         return getattr(scenario._orig_scenario, "__vedro_unittest_expected_failure__", None)
 
-    def _get_unexpected_success(self, scenario: VirtualScenario) -> Union[bool, None]:
+    def _get_unexpected_success(self, scenario: VirtualScenario) -> Union[BaseException, None]:
         return getattr(scenario._orig_scenario, "__vedro_unittest_unexpected_success__", None)
 
 

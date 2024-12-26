@@ -6,16 +6,23 @@ from unittest import TestCase
 __all__ = ("TestResult",)
 
 
-ExcInfo = tuple[type[BaseException], BaseException, TracebackType]
-OptExcInfo = ExcInfo | tuple[None, None, None]
+ExcInfo = Tuple[type[BaseException], BaseException, TracebackType]
+OptExcInfo = ExcInfo | Tuple[None, None, None]
+
+
+TestCaseExceptionList = List[Tuple[TestCase, BaseException]]
+
+
+class UnexpectedSuccessError(AssertionError):
+    __module__ = "vedro_unittest"
 
 
 class TestResult(unittest.TestResult):
     def __init__(self) -> None:
         super().__init__()
-        self.vedro_unittest_exceptions: List[Tuple[TestCase, BaseException]] = []
-        self.vedro_unittest_expected_failures: List[Tuple[TestCase, BaseException]] = []
-        self.vedro_unittest_unexpected_successes: List[Tuple[TestCase, None]] = []
+        self.vedro_unittest_exceptions: TestCaseExceptionList = []
+        self.vedro_unittest_expected_failures: TestCaseExceptionList = []
+        self.vedro_unittest_unexpected_successes: TestCaseExceptionList = []
 
     def addSuccess(self, test: TestCase) -> None:
         pass
@@ -43,7 +50,8 @@ class TestResult(unittest.TestResult):
 
     def addUnexpectedSuccess(self, test: TestCase) -> None:
         super().addUnexpectedSuccess(test)
-        self.vedro_unittest_unexpected_successes.append((test, None))
+        unexpected_error = UnexpectedSuccessError("Scenario passed, but expected to fail")
+        self.vedro_unittest_unexpected_successes.append((test, unexpected_error))
 
     def _get_exception(self, err: OptExcInfo) -> BaseException:
         _, exc_val, _ = err

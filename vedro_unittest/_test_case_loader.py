@@ -59,7 +59,7 @@ class TestCaseLoader(ScenarioLoader):
     def _create_vedro_scenario(self, test: unittest.TestCase) -> Type[Scenario]:
         def do(scn: Scenario) -> None:
             test_result = self._run_test(test)
-            self._process_test_result(scn, test_result)
+            self._process_test_result(scenario, test_result)
 
         scenario = type(self._create_scenario_name(test), (Scenario,), {
             "subject": self._create_scenario_subject(test),
@@ -90,7 +90,7 @@ class TestCaseLoader(ScenarioLoader):
             test.run(test_result)
         return test_result
 
-    def _process_test_result(self, scenario: Scenario, test_result: TestResult) -> None:
+    def _process_test_result(self, scenario: Type[Scenario], test_result: TestResult) -> None:
         if test_result.vedro_unittest_exceptions:
             _, exception = test_result.vedro_unittest_exceptions[0]
             raise exception
@@ -100,10 +100,9 @@ class TestCaseLoader(ScenarioLoader):
             setattr(scenario, "__vedro_unittest_expected_failure__", expected_failure)
 
         if test_result.vedro_unittest_unexpected_successes:
-            exc_type = type("UnexpectedSuccessError", (AssertionError,), {})
-            exc_value = exc_type("Scenario passed, but expected to fail")
-            setattr(scenario, "__vedro_unittest_unexpected_success__", exc_value)
-            raise exc_value
+            _, unexpected_error = test_result.vedro_unittest_unexpected_successes[0]
+            setattr(scenario, "__vedro_unittest_unexpected_success__", unexpected_error)
+            raise unexpected_error
 
     def _is_test_skipped(self, test: unittest.TestCase) -> bool:
         return cast(bool, self._get_test_attr(test, "__unittest_skip__", False))
