@@ -53,8 +53,8 @@ async def test_run_passed_test(*, loader: TestCaseLoader, tmp_scn_dir: Path,
         assert report.total == report.passed == 1
 
 
-async def test_run_failed_test(*, loader: TestCaseLoader, tmp_scn_dir: Path,
-                               dispatcher: Dispatcher):
+async def test_run_failed_test_failure(*, loader: TestCaseLoader, tmp_scn_dir: Path,
+                                       dispatcher: Dispatcher):
     with given:
         path = tmp_scn_dir / "scenario.py"
         path.write_text(dedent('''
@@ -62,6 +62,26 @@ async def test_run_failed_test(*, loader: TestCaseLoader, tmp_scn_dir: Path,
             class TestCase(unittest.TestCase):
                 def test_smth(self):
                     self.assertTrue(False)
+        '''))
+
+        test_cases = await loader.load(path)
+
+    with when:
+        report = await run_test_cases(test_cases, dispatcher, project_dir=tmp_scn_dir.parent)
+
+    with then:
+        assert report.total == report.failed == 1
+
+
+async def test_run_failed_test_error(*, loader: TestCaseLoader, tmp_scn_dir: Path,
+                                     dispatcher: Dispatcher):
+    with given:
+        path = tmp_scn_dir / "scenario.py"
+        path.write_text(dedent('''
+            import unittest
+            class TestCase(unittest.TestCase):
+                def test_smth(self):
+                    raise TabError("details")
         '''))
 
         test_cases = await loader.load(path)
@@ -153,15 +173,35 @@ async def test_run_skipped_class_decorators(decorator: str, *, loader: TestCaseL
         assert report.total == report.skipped == 2
 
 
-async def test_run_intentional_fail(*, loader: TestCaseLoader, tmp_scn_dir: Path,
-                                    dispatcher: Dispatcher):
+async def test_run_force_fail(*, loader: TestCaseLoader, tmp_scn_dir: Path,
+                              dispatcher: Dispatcher):
     with given:
         path = tmp_scn_dir / "scenario.py"
         path.write_text(dedent('''
             import unittest
             class TestCase(unittest.TestCase):
                 def test_smth(self):
-                    self.fail("Intentional failure for testing")
+                    self.fail("Intentional failure")
+        '''))
+
+        test_cases = await loader.load(path)
+
+    with when:
+        report = await run_test_cases(test_cases, dispatcher, project_dir=tmp_scn_dir.parent)
+
+    with then:
+        assert report.total == 1 == report.failed == 1
+
+
+async def test_run_force_skip(*, loader: TestCaseLoader, tmp_scn_dir: Path,
+                              dispatcher: Dispatcher):
+    with given:
+        path = tmp_scn_dir / "scenario.py"
+        path.write_text(dedent('''
+            import unittest
+            class TestCase(unittest.TestCase):
+                def test_smth(self):
+                    self.skipTest("Intentional skip")
         '''))
 
         test_cases = await loader.load(path)
