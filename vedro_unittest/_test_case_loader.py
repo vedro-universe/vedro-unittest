@@ -1,7 +1,7 @@
 import os
+import sys
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from inspect import isclass
 from pathlib import Path
 from types import ModuleType
 from typing import Any, List, Type, cast
@@ -11,6 +11,7 @@ from vedro import Scenario, skip
 from vedro.core import ModuleLoader, ScenarioLoader
 
 from ._test_result import TestResult
+from ._utils import is_method_overridden
 
 __all__ = ("TestCaseLoader",)
 
@@ -21,15 +22,30 @@ class TestCaseLoader(ScenarioLoader):
 
     async def load(self, path: Path) -> List[Type[Scenario]]:
         module = await self._module_loader.load(path)
-        loaded = self._collect_scenarios(module)
-        return loaded
+        # Register the loaded module in sys.modules so that unittest can discover setUpModule()
+        sys.modules[module.__name__] = module
+        return self._collect_scenarios(module)
 
     def _collect_scenarios(self, module: ModuleType) -> List[Type[Scenario]]:
+        test_loader = unittest.TestLoader()
+        test_suite = test_loader.loadTestsFromModule(module)
+
+        if self._has_module_setup_or_teardown(module):
+            return [self._create_vedro_scenario_for_module(test_suite, module)]
+
         loaded = []
-        for name, val in module.__dict__.items():
-            if isclass(val) and issubclass(val, unittest.TestCase) and val != unittest.TestCase:
-                scenarios = self._create_vedro_scenarios(val, module)
-                loaded.extend(scenarios)
+        for suite in test_suite:
+            if suite.countTestCases() == 0:
+                continue
+
+            first_test = self._get_first_test(suite)
+            if self._has_class_setup_or_teardown(first_test):
+                scenario = self._create_vedro_scenario_for_class(suite, module)
+                loaded.append(scenario)
+            else:
+                for test in self._extract_tests_from_suite(suite):
+                    scenario = self._create_vedro_scenario(test, module)
+                    loaded.append(scenario)
         return loaded
 
     def _extract_tests_from_suite(self, test_suite: unittest.TestSuite) -> List[unittest.TestCase]:
@@ -43,45 +59,54 @@ class TestCaseLoader(ScenarioLoader):
                 raise TypeError(f"Unsupported test type: {type(test)}")
         return tests
 
-    def _create_vedro_scenarios(self, test_case: Type[unittest.TestCase],
-                                module: ModuleType) -> List[Type[Scenario]]:
-        test_loader = unittest.TestLoader()
-        test_suite = test_loader.loadTestsFromTestCase(test_case)
-        tests = self._extract_tests_from_suite(test_suite)
-
-        scenarios = []
-        for test in tests:
-            scenario = self._create_vedro_scenario(test)
-            scenario.__file__ = os.path.abspath(module.__file__)  # type: ignore
-            scenarios.append(scenario)
-        return scenarios
-
-    def _create_vedro_scenario(self, test: unittest.TestCase) -> Type[Scenario]:
+    def _create_vedro_scenario_for_module(self, test_suite: unittest.TestSuite,
+                                          module: ModuleType) -> Type[Scenario]:
         def do(scn: Scenario) -> None:
-            test_result = self._run_test(test)
-            self._process_test_result(scenario, test_result)
+            self._process_test_result(scn.__class__, self._run_test(test_suite))
 
-        scenario = type(self._create_scenario_name(test), (Scenario,), {
-            "subject": self._create_scenario_subject(test),
+        first_test = self._get_first_test(test_suite)
+        class_name = first_test.__class__.__name__
+        scenario = type(f"Scenario__{class_name}", (Scenario,), {
+            "__file__": os.path.abspath(str(module.__file__)),
+            "subject": f"All tests in module '{module.__name__}'",
             "do": do,
         })
 
-        if self._is_test_skipped(test):
-            skip_reason = self._get_test_skip_reason(test)
+        return cast(Type[Scenario], scenario)
+
+    def _create_vedro_scenario_for_class(self, test_suite: unittest.TestSuite,
+                                         module: ModuleType) -> Type[Scenario]:
+        def do(scn: Scenario) -> None:
+            self._process_test_result(scn.__class__, self._run_test(test_suite))
+
+        first_test = self._get_first_test(test_suite)
+        class_name = first_test.__class__.__name__
+        scenario = type(f"Scenario__{class_name}", (Scenario,), {
+            "__file__": os.path.abspath(str(module.__file__)),
+            "subject": f"All tests in class '{class_name}'",
+            "do": do,
+        })
+
+        return cast(Type[Scenario], scenario)
+
+    def _create_vedro_scenario(self, test_case: unittest.TestCase, module: ModuleType) -> Type[Scenario]:
+        def do(scn: Scenario) -> None:
+            self._process_test_result(scn.__class__, self._run_test(test_case))
+
+        class_name = test_case.__class__.__name__
+        method_name = test_case._testMethodName
+        scenario = type(f"Scenario__{class_name}__{method_name}", (Scenario,), {
+            "__file__": os.path.abspath(str(module.__file__)),
+            "subject": f"[{class_name}] {method_name.replace('_', ' ')}",
+            "do": do,
+        })
+
+        if self._is_test_skipped(test_case):
+            skip_reason = self._get_test_skip_reason(test_case)
             return skip(skip_reason)(scenario)
         return cast(Type[Scenario], scenario)
 
-    def _create_scenario_subject(self, test: unittest.TestCase) -> str:
-        class_name = test.__class__.__name__
-        method_name = test._testMethodName
-        return f"[{class_name}] {method_name.replace('_', ' ')}"
-
-    def _create_scenario_name(self, test: unittest.TestCase) -> str:
-        class_name = test.__class__.__name__
-        method_name = test._testMethodName
-        return f"Scenario__{class_name}__{method_name}"
-
-    def _run_test(self, test: unittest.TestCase) -> TestResult:
+    def _run_test(self, test: unittest.TestCase | unittest.TestSuite) -> TestResult:
         test_result = TestResult()
         if isinstance(test, unittest.IsolatedAsyncioTestCase):
             with ThreadPoolExecutor() as executor:
@@ -104,6 +129,24 @@ class TestCaseLoader(ScenarioLoader):
             setattr(scenario, "__vedro_unittest_unexpected_success__", unexpected_error)
             raise unexpected_error
 
+    def _get_first_test(self, test_suite: unittest.TestSuite | unittest.TestCase) -> unittest.TestCase:
+        if isinstance(test_suite, unittest.TestCase):
+            return test_suite
+        return self._get_first_test(next(iter(test_suite)))
+
+    def _has_module_setup_or_teardown(self, module: ModuleType) -> bool:
+        if getattr(module, "setUpModule", None):
+            return True
+        if getattr(module, "tearDownModule", None):
+            return True
+        return False
+
+    def _has_class_setup_or_teardown(self, test_case: unittest.TestCase) -> bool:
+        return (
+            is_method_overridden("setUpClass", test_case, unittest.TestCase) or
+            is_method_overridden("tearDownClass", test_case, unittest.TestCase)
+        )
+
     def _is_test_skipped(self, test: unittest.TestCase) -> bool:
         return cast(bool, self._get_test_attr(test, "__unittest_skip__", False))
 
@@ -111,8 +154,14 @@ class TestCaseLoader(ScenarioLoader):
         return cast(str, self._get_test_attr(test, "__unittest_skip_why__", ""))
 
     def _get_test_attr(self, test: unittest.TestCase, name: str, default: Any) -> Any:
-        test_method_value = getattr(getattr(test, test._testMethodName), name, Nil)
         test_value = getattr(test, name, Nil)
+        try:
+            test_method = getattr(test, test._testMethodName)
+        except AttributeError:
+            test_method_value = Nil
+        else:
+            test_method_value = getattr(test_method, name, Nil)
+
         if test_method_value is not Nil:
             return test_method_value
         elif test_value is not Nil:
