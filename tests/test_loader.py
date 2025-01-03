@@ -6,7 +6,7 @@ from baby_steps import given, then, when
 from vedro import Scenario
 from vedro.core import Dispatcher
 
-from vedro_unittest import TestCaseLoader as Loader
+from vedro_unittest import UnitTestLoader as Loader
 
 from ._utils import dispatcher, loader, run_test_cases, tmp_scn_dir
 
@@ -29,7 +29,7 @@ async def test_load_scenario(*, loader: Loader, tmp_scn_dir: Path):
     with then:
         assert len(test_cases) == 1
         assert issubclass(test_cases[0], Scenario)
-        assert test_cases[0].__name__ == "Scenario__TestCase__test_smth"
+        assert test_cases[0].__name__ == "Scenario_TestCase_test_smth"
         assert test_cases[0].subject == "[TestCase] test smth"
 
 

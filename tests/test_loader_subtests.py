@@ -4,7 +4,7 @@ from textwrap import dedent
 from baby_steps import given, then, when
 from vedro.core import Dispatcher
 
-from vedro_unittest import TestCaseLoader as Loader
+from vedro_unittest import UnitTestLoader as Loader
 
 from ._utils import dispatcher, loader, run_test_cases, tmp_scn_dir
 
@@ -18,7 +18,7 @@ async def test_subtests_all_pass(*, loader: Loader, tmp_scn_dir: Path, dispatche
         path = tmp_scn_dir / "scenario.py"
         path.write_text(dedent(f'''
             import unittest
-    
+
             class TestCase(unittest.TestCase):
                 def test_subtests(self):
                     with open("{tmp_file}", "w") as f:

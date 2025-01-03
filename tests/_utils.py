@@ -9,7 +9,7 @@ from vedro.core.scenario_discoverer import create_vscenario
 from vedro.core.scenario_runner import MonotonicScenarioRunner as ScenarioRunner
 from vedro.core.scenario_scheduler import MonotonicScenarioScheduler as ScenarioScheduler
 
-from vedro_unittest import TestCaseLoader, VedroUnitTest, VedroUnitTestPlugin
+from vedro_unittest import UnitTestLoader, VedroUnitTest, VedroUnitTestPlugin
 
 __all__ = ("dispatcher", "vedro_unittest", "tmp_scn_dir", "loader", "run_test_cases",
            "make_vscenario",)
@@ -41,8 +41,8 @@ def tmp_scn_dir(tmp_path: Path) -> Path:
 
 
 @pytest.fixture()
-def loader() -> TestCaseLoader:
-    return TestCaseLoader(ModuleFileLoader())
+def loader() -> UnitTestLoader:
+    return UnitTestLoader(ModuleFileLoader())
 
 
 def _create_vscenario(test_case: Type[Scenario], *, project_dir: Path) -> VirtualScenario:

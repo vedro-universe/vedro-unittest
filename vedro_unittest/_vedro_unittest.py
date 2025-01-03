@@ -11,7 +11,7 @@ from vedro.events import (
 )
 from vedro.plugins.director.rich.utils import TracebackFilter
 
-from ._test_case_loader import TestCaseLoader
+from ._test_loader import UnitTestLoader
 
 __all__ = ("VedroUnitTest", "VedroUnitTestPlugin",)
 
@@ -30,7 +30,7 @@ class VedroUnitTestPlugin(Plugin):
 
     def on_config_loaded(self, event: ConfigLoadedEvent) -> None:
         event.config.Registry.ScenarioLoader.register(  # pragma: no branch
-            lambda: TestCaseLoader(module_loader=event.config.Registry.ModuleLoader()),
+            lambda: UnitTestLoader(module_loader=event.config.Registry.ModuleLoader()),
             self
         )
 
