@@ -1,3 +1,4 @@
+import inspect
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -11,7 +12,6 @@ from vedro import Scenario, skip
 from vedro.core import ModuleLoader, ScenarioLoader
 
 from ._test_result import TestResult
-from ._utils import is_method_overridden
 
 __all__ = ("UnitTestLoader",)
 
@@ -136,9 +136,18 @@ class UnitTestLoader(ScenarioLoader):
 
     def _has_class_setup_or_teardown(self, test_case: TestCase) -> bool:
         return (
-            is_method_overridden("setUpClass", test_case, TestCase) or
-            is_method_overridden("tearDownClass", test_case, TestCase)
+            self._is_method_overridden("setUpClass", test_case, TestCase) or
+            self._is_method_overridden("tearDownClass", test_case, TestCase)
         )
+
+    def _is_method_overridden(self, method_name: str, child_class: Any, parent_class: Any) -> bool:
+        child_method = inspect.getattr_static(child_class, method_name, None)
+        parent_method = inspect.getattr_static(parent_class, method_name, None)
+
+        if (child_method is None) or (parent_method is None):
+            return False
+
+        return child_method is not parent_method
 
     def _is_test_skipped(self, test_suite: Union[TestSuite, TestCase]) -> Tuple[bool, str]:
         if isinstance(test_suite, TestCase):
