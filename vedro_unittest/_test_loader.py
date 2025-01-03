@@ -19,6 +19,7 @@ __all__ = ("UnitTestLoader",)
 class UnitTestLoader(ScenarioLoader):
     def __init__(self, module_loader: ModuleLoader) -> None:
         self._module_loader = module_loader
+        self._raise_as_exception_group = sys.version_info >= (3, 11)
 
     async def load(self, path: Path) -> List[Type[Scenario]]:
         module = await self._module_loader.load(path)
@@ -115,8 +116,12 @@ class UnitTestLoader(ScenarioLoader):
 
     def _process_test_result(self, scenario: Type[Scenario], test_result: TestResult) -> None:
         if test_result.vedro_unittest_exceptions:
-            _, exception = test_result.vedro_unittest_exceptions[0]
-            raise exception
+            if self._raise_as_exception_group and len(test_result.vedro_unittest_exceptions) > 1:
+                exceptions = [exc for _, exc in test_result.vedro_unittest_exceptions]
+                raise ExceptionGroup("Multiple Unittest Exceptions", exceptions)  # type: ignore
+            else:
+                _, exception = test_result.vedro_unittest_exceptions[0]
+                raise exception
 
         if test_result.vedro_unittest_expected_failures:
             _, expected_failure = test_result.vedro_unittest_expected_failures[0]
