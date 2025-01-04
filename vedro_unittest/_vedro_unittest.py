@@ -1,6 +1,7 @@
 import os
+import sys
 import unittest
-from typing import Type, Union
+from typing import Generator, List, Type, Union
 
 from vedro.core import Dispatcher, Plugin, PluginConfig, VirtualScenario
 from vedro.events import (
@@ -14,6 +15,10 @@ from vedro.plugins.director.rich.utils import TracebackFilter
 from ._test_loader import UnitTestLoader
 
 __all__ = ("VedroUnitTest", "VedroUnitTestPlugin",)
+
+if sys.version_info < (3, 11):
+    class ExceptionGroup(BaseException):
+        exceptions: List[BaseException] = []
 
 
 class VedroUnitTestPlugin(Plugin):
@@ -96,7 +101,24 @@ class VedroUnitTestPlugin(Plugin):
             vedro_unittest_module = os.path.dirname(__file__)
             self._tb_filter = TracebackFilter(modules=[unittest, vedro_unittest_module])
 
+        for exc in self._yield_exceptions(event.exc_info.value):
+            if tb := getattr(exc, "__traceback__", None):
+                exc.__traceback__ = self._tb_filter.filter_tb(tb)
+
         event.exc_info.traceback = self._tb_filter.filter_tb(event.exc_info.traceback)
+
+    def _yield_exceptions(self, exc: BaseException) -> Generator[BaseException, None, None]:
+        """
+        Recursively yield all exceptions in an ExceptionGroup, including nested ones.
+
+        :param exc: A BaseException that may be an ExceptionGroup or a regular exception.
+        :return: A generator of leaf exceptions.
+        """
+        if isinstance(exc, ExceptionGroup):
+            for sub_exc in exc.exceptions:
+                yield from self._yield_exceptions(sub_exc)
+        else:
+            yield exc
 
     def _get_expected_failure(self, scenario: VirtualScenario) -> Union[BaseException, None]:
         """
