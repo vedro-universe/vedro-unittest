@@ -15,7 +15,11 @@ from ._test_result import TestResult
 
 __all__ = ("UnitTestLoader",)
 
-if sys.version_info < (3, 11):
+
+IS_PY311_PLUS = sys.version_info >= (3, 11)
+
+if not IS_PY311_PLUS:
+    # Python < 3.11 does not have ExceptionGroup
     class ExceptionGroup(BaseException):
         pass
 
@@ -26,14 +30,15 @@ class UnitTestLoader(ScenarioLoader):
 
     Handles the discovery and conversion of unittest-based tests within the Vedro framework.
     """
-    def __init__(self, module_loader: ModuleLoader) -> None:
+    def __init__(self, module_loader: ModuleLoader, *,
+                 raise_as_exc_group: bool = IS_PY311_PLUS) -> None:
         """
         Initialize the UnitTestLoader with a module loader.
 
         :param module_loader: The loader responsible for loading Python modules.
         """
         self._module_loader = module_loader
-        self._raise_as_exc_group = sys.version_info >= (3, 11)
+        self._raise_as_exc_group = raise_as_exc_group
 
     async def load(self, path: Path) -> List[Type[Scenario]]:
         """
@@ -182,7 +187,7 @@ class UnitTestLoader(ScenarioLoader):
             if self._raise_as_exc_group and len(test_result.vedro_unittest_exceptions) > 1:
                 exceptions = []
                 for test, exc in test_result.vedro_unittest_exceptions:
-                    if sys.version_info >= (3, 11):
+                    if IS_PY311_PLUS:
                         exc.add_note("> test.id: " + test.id())
                     exceptions.append(cast(Exception, exc))
                 raise ExceptionGroup("Multiple Unittest Exceptions", exceptions)
