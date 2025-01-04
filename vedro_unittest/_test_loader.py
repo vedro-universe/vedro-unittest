@@ -36,6 +36,11 @@ class UnitTestLoader(ScenarioLoader):
         Initialize the UnitTestLoader with a module loader.
 
         :param module_loader: The loader responsible for loading Python modules.
+        :param raise_as_exc_group: If set to True, multiple unittest exceptions will be
+                                   raised as an ExceptionGroup (on Python 3.11+), or
+                                   otherwise handled accordingly on older Python versions.
+                                   Defaults to the value of `IS_PY311_PLUS` (True for
+                                   Python 3.11+, False otherwise).
         """
         self._module_loader = module_loader
         self._raise_as_exc_group = raise_as_exc_group
@@ -187,7 +192,7 @@ class UnitTestLoader(ScenarioLoader):
             if self._raise_as_exc_group and len(test_result.vedro_unittest_exceptions) > 1:
                 exceptions = []
                 for test, exc in test_result.vedro_unittest_exceptions:
-                    if IS_PY311_PLUS:
+                    if hasattr(exc, "add_note"):
                         exc.add_note("> test.id: " + test.id())
                     exceptions.append(cast(Exception, exc))
                 raise ExceptionGroup("Multiple Unittest Exceptions", exceptions)
