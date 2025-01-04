@@ -16,7 +16,8 @@ from ._test_result import TestResult
 __all__ = ("UnitTestLoader",)
 
 if sys.version_info < (3, 11):
-    ExceptionGroup = type("ExceptionGroup", (Exception,), {})
+    class ExceptionGroup(BaseException):
+        pass
 
 
 class UnitTestLoader(ScenarioLoader):
@@ -179,7 +180,11 @@ class UnitTestLoader(ScenarioLoader):
         """
         if test_result.vedro_unittest_exceptions:
             if self._raise_as_exc_group and len(test_result.vedro_unittest_exceptions) > 1:
-                exceptions = [cast(Exception, e) for _, e in test_result.vedro_unittest_exceptions]
+                exceptions = []
+                for test, exc in test_result.vedro_unittest_exceptions:
+                    if sys.version_info >= (3, 11):
+                        exc.add_note("> test.id: " + test.id())
+                    exceptions.append(cast(Exception, exc))
                 raise ExceptionGroup("Multiple Unittest Exceptions", exceptions)
             else:
                 _, exception = test_result.vedro_unittest_exceptions[0]
