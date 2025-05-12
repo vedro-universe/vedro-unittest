@@ -22,7 +22,7 @@ setup(
     python_requires=">=3.8",
     url="https://github.com/vedro-universe/vedro-unittest",
     project_urls={
-        "Docs": "https://github.com/vedro-universe/vedro-unittest",
+        "Docs": "https://vedro.io/docs/integrations/unittest-bridge",
         "GitHub": "https://github.com/vedro-universe/vedro-unittest",
     },
     license="Apache-2.0",

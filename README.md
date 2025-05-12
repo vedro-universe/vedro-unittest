@@ -5,7 +5,7 @@
 [![PyPI - Downloads](https://img.shields.io/pypi/dm/vedro-unittest?style=flat-square)](https://pypi.python.org/pypi/vedro-unittest/)
 [![Python Version](https://img.shields.io/pypi/pyversions/vedro-unittest.svg?style=flat-square)](https://pypi.python.org/pypi/vedro-unittest/)
 
-[vedro-unittest](https://pypi.org/project/vedro-unittest/) allows running unittest test cases within the Vedro framework. This plugin seamlessly integrates unittest test cases, converting them into Vedro scenarios to leverage the powerful features of the Vedro testing framework.
+[vedro-unittest](https://pypi.org/project/vedro-unittest/) allows running unittest test cases within the [Vedro](https://vedro.io/) framework. This plugin seamlessly integrates unittest test cases, converting them into Vedro scenarios to leverage the powerful features of the Vedro testing framework.
 
 ## Installation
 
@@ -62,11 +62,11 @@ import unittest
 from base64 import b64encode, b64decode
 
 class TestBase64Encoding(unittest.TestCase):
-    def test_encode_banana_to_base64(self):
+    def test_encode_to_base64(self):
         result = b64encode(b"banana")
         self.assertEqual(result, b"YmFuYW5h")
 
-    def test_decode_banana_from_base64(self):
+    def test_decode_from_base64(self):
         result = b64decode(b"YmFuYW5h")
         self.assertEqual(result, b"banana")
 ```
@@ -74,7 +74,9 @@ class TestBase64Encoding(unittest.TestCase):
 Then run your tests using Vedro:
 
 ```shell
-$ vedro run
+$ vedro run tests/
 ```
 
 This will automatically detect and run your unittest test cases as Vedro scenarios, allowing you to take advantage of Vedro's rich feature set.
+
+**📘 Explore more:** Learn how to gradually migrate your test suite, understand compatibility and limitations, and unlock the full potential of Vedro in the [official unittest bridge documentation](https://vedro.io/docs/integrations/unittest-bridge).
