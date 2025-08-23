@@ -4,15 +4,16 @@ from typing import List, Optional, Type
 
 import pytest
 from vedro import Scenario
-from vedro.core import Dispatcher, ModuleFileLoader, Report, VirtualScenario
+from vedro.core import Dispatcher, ModuleFileLoader, Report, ScenarioSource, VirtualScenario
 from vedro.core.scenario_discoverer import create_vscenario
 from vedro.core.scenario_runner import MonotonicScenarioRunner as ScenarioRunner
 from vedro.core.scenario_scheduler import MonotonicScenarioScheduler as ScenarioScheduler
+from vedro.plugins.skipper import SkipperPlugin
 
-from vedro_unittest import UnitTestLoader, VedroUnitTest, VedroUnitTestPlugin
+from vedro_unittest import UnitTestScenarioProvider, VedroUnitTest, VedroUnitTestPlugin
 
-__all__ = ("dispatcher", "vedro_unittest", "tmp_scn_dir", "loader", "run_test_cases",
-           "make_vscenario",)
+__all__ = ("dispatcher", "vedro_unittest", "tmp_scn_dir", "provider", "run_scenarios",
+           "make_vscenario", "create_scenario_source",)
 
 
 @pytest.fixture
@@ -41,8 +42,12 @@ def tmp_scn_dir(tmp_path: Path) -> Path:
 
 
 @pytest.fixture()
-def loader() -> UnitTestLoader:
-    return UnitTestLoader(ModuleFileLoader())
+def provider() -> UnitTestScenarioProvider:
+    return UnitTestScenarioProvider()
+
+
+def create_scenario_source(path: Path, project_dir: Path) -> ScenarioSource:
+    return ScenarioSource(path, project_dir, ModuleFileLoader())
 
 
 def _create_vscenario(test_case: Type[Scenario], *, project_dir: Path) -> VirtualScenario:
@@ -51,6 +56,20 @@ def _create_vscenario(test_case: Type[Scenario], *, project_dir: Path) -> Virtua
         reason = getattr(test_case, "__vedro__skip_reason__", None)
         vscenario.skip(reason)
     return vscenario
+
+
+async def run_scenarios(scenarios: List[VirtualScenario], dispatcher: Dispatcher) -> Report:
+    # In test runs SkipperPlugin is not active, so apply manual skips here using scenario metadata
+    for scenario in scenarios:
+        if scenario.get_meta("skipped", plugin=SkipperPlugin, default=False):
+            reason = scenario.get_meta("skip_reason", plugin=SkipperPlugin, default=None)
+            scenario.skip(reason)
+
+    scheduler = ScenarioScheduler(scenarios)
+
+    runner = ScenarioRunner(dispatcher)
+    report = await runner.run(scheduler)
+    return report
 
 
 async def run_test_cases(test_cases: List[Type[Scenario]], dispatcher: Dispatcher, *,

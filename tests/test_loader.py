@@ -4,16 +4,16 @@ from textwrap import dedent
 import pytest
 from baby_steps import given, then, when
 from vedro import Scenario
-from vedro.core import Dispatcher
+from vedro.core import Dispatcher, VirtualScenario
 
-from vedro_unittest import UnitTestLoader as Loader
+from vedro_unittest import UnitTestScenarioProvider as Provider
 
-from ._utils import dispatcher, loader, run_test_cases, tmp_scn_dir
+from ._utils import create_scenario_source, dispatcher, provider, run_scenarios, tmp_scn_dir
 
-__all__ = ("dispatcher", "tmp_scn_dir", "loader",)  # fixtures
+__all__ = ("dispatcher", "tmp_scn_dir", "provider",)  # fixtures
 
 
-async def test_load_scenario(*, loader: Loader, tmp_scn_dir: Path):
+async def test_provide_scenario(*, provider: Provider, tmp_scn_dir: Path):
     with given:
         path = tmp_scn_dir / "scenario.py"
         path.write_text(dedent('''
@@ -22,18 +22,21 @@ async def test_load_scenario(*, loader: Loader, tmp_scn_dir: Path):
                 def test_smth(self):
                     self.assertTrue(True)
         '''))
+        source = create_scenario_source(path, tmp_scn_dir.parent)
 
     with when:
-        test_cases = await loader.load(path)
+        scenarios = await provider.provide(source)
 
     with then:
-        assert len(test_cases) == 1
-        assert issubclass(test_cases[0], Scenario)
-        assert test_cases[0].__name__ == "Scenario_TestCase_test_smth"
-        assert test_cases[0].subject == "[TestCase] test smth"
+        assert len(scenarios) == 1
+        assert isinstance(scenarios[0], VirtualScenario)
+        assert scenarios[0].name == "Scenario_TestCase_test_smth"
+        assert scenarios[0].subject == "[TestCase] test smth"
+
+        assert issubclass(scenarios[0]._orig_scenario, Scenario)
 
 
-async def test_load_scenarios(*, loader: Loader, tmp_scn_dir: Path):
+async def test_provide_scenarios(*, provider: Provider, tmp_scn_dir: Path):
     with given:
         path = tmp_scn_dir / "scenario.py"
         path.write_text(dedent('''
@@ -44,15 +47,16 @@ async def test_load_scenarios(*, loader: Loader, tmp_scn_dir: Path):
                 def test_smth2(self):
                     self.assertTrue(True)
         '''))
+        source = create_scenario_source(path, tmp_scn_dir.parent)
 
     with when:
-        test_cases = await loader.load(path)
+        scenarios = await provider.provide(source)
 
     with then:
-        assert len(test_cases) == 2
+        assert len(scenarios) == 2
 
 
-async def test_run_passed_test(*, loader: Loader, tmp_scn_dir: Path, dispatcher: Dispatcher):
+async def test_run_passed_test(*, provider: Provider, tmp_scn_dir: Path, dispatcher: Dispatcher):
     with given:
         path = tmp_scn_dir / "scenario.py"
         path.write_text(dedent('''
@@ -62,16 +66,18 @@ async def test_run_passed_test(*, loader: Loader, tmp_scn_dir: Path, dispatcher:
                     self.assertTrue(True)
         '''))
 
-        test_cases = await loader.load(path)
+        source = create_scenario_source(path, tmp_scn_dir.parent)
+        scenarios = await provider.provide(source)
 
     with when:
-        report = await run_test_cases(test_cases, dispatcher, project_dir=tmp_scn_dir.parent)
+        report = await run_scenarios(scenarios, dispatcher)
 
     with then:
-        assert report.total == report.passed == 1
+        assert report.total == 1
+        assert report.passed == 1
 
 
-async def test_run_failed_test_failure(*, loader: Loader, tmp_scn_dir: Path,
+async def test_run_failed_test_failure(*, provider: Provider, tmp_scn_dir: Path,
                                        dispatcher: Dispatcher):
     with given:
         path = tmp_scn_dir / "scenario.py"
@@ -82,16 +88,19 @@ async def test_run_failed_test_failure(*, loader: Loader, tmp_scn_dir: Path,
                     self.assertTrue(False)
         '''))
 
-        test_cases = await loader.load(path)
+        source = create_scenario_source(path, tmp_scn_dir.parent)
+        scenarios = await provider.provide(source)
 
     with when:
-        report = await run_test_cases(test_cases, dispatcher, project_dir=tmp_scn_dir.parent)
+        report = await run_scenarios(scenarios, dispatcher)
 
     with then:
-        assert report.total == report.failed == 1
+        assert report.total == 1
+        assert report.failed == 1
 
 
-async def test_run_failed_test_error(*, loader: Loader, tmp_scn_dir: Path, dispatcher: Dispatcher):
+async def test_run_failed_test_error(*, provider: Provider, tmp_scn_dir: Path,
+                                     dispatcher: Dispatcher):
     with given:
         path = tmp_scn_dir / "scenario.py"
         path.write_text(dedent('''
@@ -101,13 +110,15 @@ async def test_run_failed_test_error(*, loader: Loader, tmp_scn_dir: Path, dispa
                     raise TabError("details")
         '''))
 
-        test_cases = await loader.load(path)
+        source = create_scenario_source(path, tmp_scn_dir.parent)
+        scenarios = await provider.provide(source)
 
     with when:
-        report = await run_test_cases(test_cases, dispatcher, project_dir=tmp_scn_dir.parent)
+        report = await run_scenarios(scenarios, dispatcher)
 
     with then:
-        assert report.total == report.failed == 1
+        assert report.total == 1
+        assert report.failed == 1
 
 
 @pytest.mark.parametrize("decorator", [
@@ -117,7 +128,7 @@ async def test_run_failed_test_error(*, loader: Loader, tmp_scn_dir: Path, dispa
     "unittest.skipUnless(False, 'reason')",
 ])
 async def test_run_skipped_test_decorators(decorator: str, *,
-                                           loader: Loader,
+                                           provider: Provider,
                                            tmp_scn_dir: Path,
                                            dispatcher: Dispatcher):
     with given:
@@ -130,13 +141,15 @@ async def test_run_skipped_test_decorators(decorator: str, *,
                     self.assertTrue(True)
         '''))
 
-        test_cases = await loader.load(path)
+        source = create_scenario_source(path, tmp_scn_dir.parent)
+        scenarios = await provider.provide(source)
 
     with when:
-        report = await run_test_cases(test_cases, dispatcher, project_dir=tmp_scn_dir.parent)
+        report = await run_scenarios(scenarios, dispatcher)
 
     with then:
-        assert report.total == report.skipped == 1
+        assert report.total == 1
+        assert report.skipped == 1
 
 
 @pytest.mark.parametrize("decorator", [
@@ -149,7 +162,7 @@ async def test_run_skipped_test_decorators(decorator: str, *,
     "unittest.skipUnless(False, 'reason')",
 ])
 async def test_run_skipped_class_decorators(decorator: str, *,
-                                            loader: Loader,
+                                            provider: Provider,
                                             tmp_scn_dir: Path,
                                             dispatcher: Dispatcher):
     with given:
@@ -164,16 +177,18 @@ async def test_run_skipped_class_decorators(decorator: str, *,
                     self.assertTrue(True)
         '''))
 
-        test_cases = await loader.load(path)
+        source = create_scenario_source(path, tmp_scn_dir.parent)
+        scenarios = await provider.provide(source)
 
     with when:
-        report = await run_test_cases(test_cases, dispatcher, project_dir=tmp_scn_dir.parent)
+        report = await run_scenarios(scenarios, dispatcher)
 
     with then:
-        assert report.total == report.skipped == 2
+        assert report.total == 2
+        assert report.skipped == 2
 
 
-async def test_run_force_fail(*, loader: Loader, tmp_scn_dir: Path, dispatcher: Dispatcher):
+async def test_run_force_fail(*, provider: Provider, tmp_scn_dir: Path, dispatcher: Dispatcher):
     with given:
         path = tmp_scn_dir / "scenario.py"
         path.write_text(dedent('''
@@ -183,16 +198,18 @@ async def test_run_force_fail(*, loader: Loader, tmp_scn_dir: Path, dispatcher: 
                     self.fail("Intentional failure")
         '''))
 
-        test_cases = await loader.load(path)
+        source = create_scenario_source(path, tmp_scn_dir.parent)
+        scenarios = await provider.provide(source)
 
     with when:
-        report = await run_test_cases(test_cases, dispatcher, project_dir=tmp_scn_dir.parent)
+        report = await run_scenarios(scenarios, dispatcher)
 
     with then:
-        assert report.total == 1 == report.failed == 1
+        assert report.total == 1
+        assert report.failed == 1
 
 
-async def test_run_force_skip(*, loader: Loader, tmp_scn_dir: Path, dispatcher: Dispatcher):
+async def test_run_force_skip(*, provider: Provider, tmp_scn_dir: Path, dispatcher: Dispatcher):
     with given:
         path = tmp_scn_dir / "scenario.py"
         path.write_text(dedent('''
@@ -202,16 +219,17 @@ async def test_run_force_skip(*, loader: Loader, tmp_scn_dir: Path, dispatcher: 
                     self.skipTest("Intentional skip")
         '''))
 
-        test_cases = await loader.load(path)
+        source = create_scenario_source(path, tmp_scn_dir.parent)
+        scenarios = await provider.provide(source)
 
     with when:
-        report = await run_test_cases(test_cases, dispatcher, project_dir=tmp_scn_dir.parent)
+        report = await run_scenarios(scenarios, dispatcher)
 
     with then:
         assert report.total == 1 == report.failed == 1
 
 
-async def test_run_expected_failure_passed(*, loader: Loader, tmp_scn_dir: Path,
+async def test_run_expected_failure_passed(*, provider: Provider, tmp_scn_dir: Path,
                                            dispatcher: Dispatcher):
     with given:
         path = tmp_scn_dir / "scenario.py"
@@ -223,16 +241,18 @@ async def test_run_expected_failure_passed(*, loader: Loader, tmp_scn_dir: Path,
                     self.assertTrue(False)
         '''))
 
-        test_cases = await loader.load(path)
+        source = create_scenario_source(path, tmp_scn_dir.parent)
+        scenarios = await provider.provide(source)
 
     with when:
-        report = await run_test_cases(test_cases, dispatcher, project_dir=tmp_scn_dir.parent)
+        report = await run_scenarios(scenarios, dispatcher)
 
     with then:
-        assert report.total == report.passed == 1
+        assert report.total == 1
+        assert report.passed == 1
 
 
-async def test_run_expected_failure_failed(*, loader: Loader, tmp_scn_dir: Path,
+async def test_run_expected_failure_failed(*, provider: Provider, tmp_scn_dir: Path,
                                            dispatcher: Dispatcher):
     with given:
         path = tmp_scn_dir / "scenario.py"
@@ -244,16 +264,18 @@ async def test_run_expected_failure_failed(*, loader: Loader, tmp_scn_dir: Path,
                     self.assertTrue(True)
         '''))
 
-        test_cases = await loader.load(path)
+        source = create_scenario_source(path, tmp_scn_dir.parent)
+        scenarios = await provider.provide(source)
 
     with when:
-        report = await run_test_cases(test_cases, dispatcher, project_dir=tmp_scn_dir.parent)
+        report = await run_scenarios(scenarios, dispatcher)
 
     with then:
-        assert report.total == report.failed == 1
+        assert report.total == 1
+        assert report.failed == 1
 
 
-async def test_setup(*, loader: Loader, tmp_scn_dir: Path, dispatcher: Dispatcher):
+async def test_setup(*, provider: Provider, tmp_scn_dir: Path, dispatcher: Dispatcher):
     with given:
         tmp_file = tmp_scn_dir / "tmp_file.txt"
 
@@ -272,19 +294,21 @@ async def test_setup(*, loader: Loader, tmp_scn_dir: Path, dispatcher: Dispatche
                         f.write("test_smth2|")
         '''))
 
-        test_cases = await loader.load(path)
+        source = create_scenario_source(path, tmp_scn_dir.parent)
+        scenarios = await provider.provide(source)
 
     with when:
-        report = await run_test_cases(test_cases, dispatcher, project_dir=tmp_scn_dir.parent)
+        report = await run_scenarios(scenarios, dispatcher)
 
     with then:
-        assert report.total == report.passed == 2
+        assert report.total == 2
+        assert report.passed == 2
 
         assert tmp_file.exists()
         assert tmp_file.read_text() == "setUp|test_smth1|setUp|test_smth2|"
 
 
-async def test_teardown(*, loader: Loader, tmp_scn_dir: Path, dispatcher: Dispatcher):
+async def test_teardown(*, provider: Provider, tmp_scn_dir: Path, dispatcher: Dispatcher):
     with given:
         tmp_file = tmp_scn_dir / "tmp_file.txt"
 
@@ -302,19 +326,22 @@ async def test_teardown(*, loader: Loader, tmp_scn_dir: Path, dispatcher: Dispat
                     with open("{tmp_file}", "a") as f:
                         f.write("tearDown|")
         '''))
-        test_cases = await loader.load(path)
+
+        source = create_scenario_source(path, tmp_scn_dir.parent)
+        scenarios = await provider.provide(source)
 
     with when:
-        report = await run_test_cases(test_cases, dispatcher, project_dir=tmp_scn_dir.parent)
+        report = await run_scenarios(scenarios, dispatcher)
 
     with then:
-        assert report.total == report.passed == 2
+        assert report.total == 2
+        assert report.passed == 2
 
         assert tmp_file.exists()
         assert tmp_file.read_text() == "test_smth1|tearDown|test_smth2|tearDown|"
 
 
-async def test_cleanup(*, loader: Loader, tmp_scn_dir: Path, dispatcher: Dispatcher):
+async def test_cleanup(*, provider: Provider, tmp_scn_dir: Path, dispatcher: Dispatcher):
     with given:
         tmp_file = tmp_scn_dir / "tmp_file.txt"
 
@@ -332,13 +359,15 @@ async def test_cleanup(*, loader: Loader, tmp_scn_dir: Path, dispatcher: Dispatc
                     with open("{tmp_file}", "w") as f:
                         f.write(self.val)
         '''))
-        test_cases = await loader.load(path)
+        source = create_scenario_source(path, tmp_scn_dir.parent)
+        scenarios = await provider.provide(source)
 
     with when:
-        report = await run_test_cases(test_cases, dispatcher, project_dir=tmp_scn_dir.parent)
+        report = await run_scenarios(scenarios, dispatcher)
 
     with then:
-        assert report.total == report.passed == 1
+        assert report.total == 1
+        assert report.passed == 1
 
         assert tmp_file.exists()
         assert tmp_file.read_text() == "tearDown"
