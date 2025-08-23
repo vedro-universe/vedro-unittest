@@ -12,17 +12,23 @@ __all__ = ("dispatcher", "tmp_scn_dir",)  # fixtures
 
 
 @pytest.mark.usefixtures(vedro_unittest.__name__)
-async def test_register_scenario_loader(*, dispatcher: Dispatcher):
+async def test_register_scenario_provider(dispatcher: Dispatcher):
     with given:
-        config_ = Mock(Config)
-        event = ConfigLoadedEvent(Path("."), config_)
+        class TestConfig(Config):
+            class Registry(Config.Registry):
+                ScenarioCollector = Mock()
+
+        config_loaded_event = ConfigLoadedEvent(Path(), TestConfig)
 
     with when:
-        await dispatcher.fire(event)
+        await dispatcher.fire(config_loaded_event)
 
     with then:
-        assert config_.Registry.ScenarioLoader.register.assert_called_once() is None
-        assert len(config_.mock_calls) == 1
+        mock = TestConfig.Registry.ScenarioCollector
+
+        assert len(mock.mock_calls) == 2
+        assert mock.assert_called_once_with() is None
+        assert mock().register_provider.assert_called_once() is None
 
 
 @pytest.mark.usefixtures(vedro_unittest.__name__)

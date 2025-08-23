@@ -12,7 +12,7 @@ from vedro.events import (
 )
 from vedro.plugins.director.rich.utils import TracebackFilter
 
-from ._test_loader import UnitTestLoader
+from ._scenario_provider import UnitTestScenarioProvider
 
 __all__ = ("VedroUnitTest", "VedroUnitTestPlugin",)
 
@@ -51,14 +51,12 @@ class VedroUnitTestPlugin(Plugin):
 
     def on_config_loaded(self, event: ConfigLoadedEvent) -> None:
         """
-        Handle the configuration loaded event to register the unittest scenario loader.
+        Handle the configuration loaded event to register the unittest scenario provider.
 
         :param event: The configuration loaded event containing the application config.
         """
-        event.config.Registry.ScenarioLoader.register(  # pragma: no branch
-            lambda: UnitTestLoader(module_loader=event.config.Registry.ModuleLoader()),
-            self
-        )
+        scenario_collector = event.config.Registry.ScenarioCollector()
+        scenario_collector.register_provider(UnitTestScenarioProvider(), self)
 
     def on_scenario_passed(self, event: ScenarioPassedEvent) -> None:
         """
