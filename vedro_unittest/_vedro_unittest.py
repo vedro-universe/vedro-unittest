@@ -3,14 +3,14 @@ import sys
 import unittest
 from typing import Generator, List, Type, Union
 
-from vedro.core import Dispatcher, Plugin, PluginConfig, VirtualScenario
+from vedro.core import ConfigType, Dispatcher, Plugin, PluginConfig, VirtualScenario
+from vedro.core.exc_info import TracebackFilter
 from vedro.events import (
     ConfigLoadedEvent,
     ExceptionRaisedEvent,
     ScenarioFailedEvent,
     ScenarioPassedEvent,
 )
-from vedro.plugins.director.rich.utils import TracebackFilter
 
 from ._scenario_provider import UnitTestScenarioProvider
 
@@ -36,6 +36,7 @@ class VedroUnitTestPlugin(Plugin):
         """
         super().__init__(config)
         self._show_internal_calls: bool = config.show_internal_calls
+        self._global_config: Union[ConfigType, None] = None
         self._tb_filter: Union[TracebackFilter, None] = None
 
     def subscribe(self, dispatcher: Dispatcher) -> None:
@@ -55,7 +56,8 @@ class VedroUnitTestPlugin(Plugin):
 
         :param event: The configuration loaded event containing the application config.
         """
-        scenario_collector = event.config.Registry.ScenarioCollector()
+        self._global_config = event.config
+        scenario_collector = self._global_config.Registry.ScenarioCollector()
         scenario_collector.register_provider(UnitTestScenarioProvider(), self)
 
     def on_scenario_passed(self, event: ScenarioPassedEvent) -> None:
@@ -96,8 +98,10 @@ class VedroUnitTestPlugin(Plugin):
             return
 
         if self._tb_filter is None:
+            assert self._global_config  # for type checker
+            tb_filter_factory = self._global_config.Registry.TracebackFilter
             vedro_unittest_module = os.path.dirname(__file__)
-            self._tb_filter = TracebackFilter(modules=[unittest, vedro_unittest_module])
+            self._tb_filter = tb_filter_factory(modules=[unittest, vedro_unittest_module])
 
         for exc in self._yield_exceptions(event.exc_info.value):
             if tb := getattr(exc, "__traceback__", None):
