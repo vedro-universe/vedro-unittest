@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import List, Optional, Type
+from typing import List, Optional
 
 import pytest
 from vedro import Scenario
@@ -50,14 +50,6 @@ def create_scenario_source(path: Path, project_dir: Path) -> ScenarioSource:
     return ScenarioSource(path, project_dir, ModuleFileLoader())
 
 
-def _create_vscenario(test_case: Type[Scenario], *, project_dir: Path) -> VirtualScenario:
-    vscenario = create_vscenario(test_case, project_dir=project_dir)
-    if getattr(test_case, "__vedro__skipped__", False):
-        reason = getattr(test_case, "__vedro__skip_reason__", None)
-        vscenario.skip(reason)
-    return vscenario
-
-
 async def run_scenarios(scenarios: List[VirtualScenario], dispatcher: Dispatcher) -> Report:
     # In test runs SkipperPlugin is not active, so apply manual skips here using scenario metadata
     for scenario in scenarios:
@@ -65,16 +57,6 @@ async def run_scenarios(scenarios: List[VirtualScenario], dispatcher: Dispatcher
             reason = scenario.get_meta("skip_reason", plugin=SkipperPlugin, default=None)
             scenario.skip(reason)
 
-    scheduler = ScenarioScheduler(scenarios)
-
-    runner = ScenarioRunner(dispatcher)
-    report = await runner.run(scheduler)
-    return report
-
-
-async def run_test_cases(test_cases: List[Type[Scenario]], dispatcher: Dispatcher, *,
-                         project_dir: Path) -> Report:
-    scenarios = [_create_vscenario(test_case, project_dir=project_dir) for test_case in test_cases]
     scheduler = ScenarioScheduler(scenarios)
 
     runner = ScenarioRunner(dispatcher)
