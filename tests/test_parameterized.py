@@ -3,16 +3,16 @@ from textwrap import dedent
 
 from baby_steps import given, then, when
 from vedro import Scenario
-from vedro.core import Dispatcher
+from vedro.core import Dispatcher, VirtualScenario
 
-from vedro_unittest import UnitTestLoader as Loader
+from vedro_unittest import UnitTestScenarioProvider as Provider
 
-from ._utils import dispatcher, loader, run_test_cases, tmp_scn_dir
+from ._utils import create_scenario_source, dispatcher, provider, run_scenarios, tmp_scn_dir
 
-__all__ = ("dispatcher", "tmp_scn_dir", "loader",)  # fixtures
+__all__ = ("dispatcher", "tmp_scn_dir", "provider",)  # fixtures
 
 
-async def test_load_scenario(*, loader: Loader, tmp_scn_dir: Path):
+async def test_load_scenario(*, provider: Provider, tmp_scn_dir: Path):
     with given:
         path = tmp_scn_dir / "scenario.py"
         path.write_text(dedent('''
@@ -28,17 +28,21 @@ async def test_load_scenario(*, loader: Loader, tmp_scn_dir: Path):
                     self.assertEqual(a + b, expected)
         '''))
 
+        source = create_scenario_source(path, tmp_scn_dir.parent)
+
     with when:
-        test_cases = await loader.load(path)
+        scenarios = await provider.provide(source)
 
     with then:
-        assert len(test_cases) == 2
-        assert issubclass(test_cases[0], Scenario)
-        assert test_cases[0].__name__ == "Scenario_TestCase_test_add_0"
-        assert test_cases[0].subject == "[TestCase] test add 0"
+        assert len(scenarios) == 2
+        assert isinstance(scenarios[0], VirtualScenario)
+        assert scenarios[0].name == "Scenario_TestCase_test_add_0"
+        assert scenarios[0].subject == "[TestCase] test add 0"
+
+        assert issubclass(scenarios[0]._orig_scenario, Scenario)
 
 
-async def test_run_passed_test(*, loader: Loader, tmp_scn_dir: Path, dispatcher: Dispatcher):
+async def test_run_passed_test(*, provider: Provider, tmp_scn_dir: Path, dispatcher: Dispatcher):
     with given:
         tmp_file = tmp_scn_dir / "tmp_file.txt"
 
@@ -58,13 +62,15 @@ async def test_run_passed_test(*, loader: Loader, tmp_scn_dir: Path, dispatcher:
                     self.assertEqual(a + b, expected)
         '''))
 
-        test_cases = await loader.load(path)
+        source = create_scenario_source(path, tmp_scn_dir.parent)
+        scenarios = await provider.provide(source)
 
     with when:
-        report = await run_test_cases(test_cases, dispatcher, project_dir=tmp_scn_dir.parent)
+        report = await run_scenarios(scenarios, dispatcher)
 
     with then:
-        assert report.total == report.passed == 2
+        assert report.total == 2
+        assert report.passed == 2
 
         assert tmp_file.exists()
         assert tmp_file.read_text() == "test_add_1_2|test_add_3_4|"

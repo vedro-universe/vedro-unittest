@@ -22,6 +22,7 @@ async def test_provide_scenario(*, provider: Provider, tmp_scn_dir: Path):
                 def test_smth(self):
                     self.assertTrue(True)
         '''))
+
         source = create_scenario_source(path, tmp_scn_dir.parent)
 
     with when:
@@ -47,6 +48,7 @@ async def test_provide_scenarios(*, provider: Provider, tmp_scn_dir: Path):
                 def test_smth2(self):
                     self.assertTrue(True)
         '''))
+
         source = create_scenario_source(path, tmp_scn_dir.parent)
 
     with when:

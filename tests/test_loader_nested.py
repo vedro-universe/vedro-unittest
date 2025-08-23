@@ -4,14 +4,14 @@ from textwrap import dedent
 from baby_steps import given, then, when
 from vedro.core import Dispatcher
 
-from vedro_unittest import UnitTestLoader as Loader
+from vedro_unittest import UnitTestScenarioProvider as Provider
 
-from ._utils import dispatcher, loader, run_test_cases, tmp_scn_dir
+from ._utils import create_scenario_source, dispatcher, provider, run_scenarios, tmp_scn_dir
 
-__all__ = ("dispatcher", "tmp_scn_dir", "loader",)  # fixtures
+__all__ = ("dispatcher", "tmp_scn_dir", "provider",)  # fixtures
 
 
-async def test_load_scenarios(*, loader: Loader, tmp_scn_dir: Path):
+async def test_load_scenarios(*, provider: Provider, tmp_scn_dir: Path):
     with given:
         path = tmp_scn_dir / "scenario.py"
         path.write_text(dedent('''
@@ -24,14 +24,16 @@ async def test_load_scenarios(*, loader: Loader, tmp_scn_dir: Path):
                     self.assertTrue(True)
         '''))
 
+        source = create_scenario_source(path, tmp_scn_dir.parent)
+
     with when:
-        test_cases = await loader.load(path)
+        scenarios = await provider.provide(source)
 
     with then:
-        assert len(test_cases) == 3
+        assert len(scenarios) == 3
 
 
-async def test_run_passed_tests(*, loader: Loader, tmp_scn_dir: Path, dispatcher: Dispatcher):
+async def test_run_passed_tests(*, provider: Provider, tmp_scn_dir: Path, dispatcher: Dispatcher):
     with given:
         path = tmp_scn_dir / "scenario.py"
         path.write_text(dedent('''
@@ -44,16 +46,18 @@ async def test_run_passed_tests(*, loader: Loader, tmp_scn_dir: Path, dispatcher
                     self.assertTrue(True)
         '''))
 
-        test_cases = await loader.load(path)
+        source = create_scenario_source(path, tmp_scn_dir.parent)
+        scenarios = await provider.provide(source)
 
     with when:
-        report = await run_test_cases(test_cases, dispatcher, project_dir=tmp_scn_dir.parent)
+        report = await run_scenarios(scenarios, dispatcher)
 
     with then:
-        assert report.total == report.passed == 3
+        assert report.total == 3
+        assert report.passed == 3
 
 
-async def test_run_failed_tests(*, loader: Loader, tmp_scn_dir: Path, dispatcher: Dispatcher):
+async def test_run_failed_tests(*, provider: Provider, tmp_scn_dir: Path, dispatcher: Dispatcher):
     with given:
         path = tmp_scn_dir / "scenario.py"
         path.write_text(dedent('''
@@ -66,10 +70,11 @@ async def test_run_failed_tests(*, loader: Loader, tmp_scn_dir: Path, dispatcher
                     self.assertTrue(True)
         '''))
 
-        test_cases = await loader.load(path)
+        source = create_scenario_source(path, tmp_scn_dir.parent)
+        scenarios = await provider.provide(source)
 
     with when:
-        report = await run_test_cases(test_cases, dispatcher, project_dir=tmp_scn_dir.parent)
+        report = await run_scenarios(scenarios, dispatcher)
 
     with then:
         assert report.total == 3
